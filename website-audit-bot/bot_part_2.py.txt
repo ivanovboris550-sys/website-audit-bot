@@ -1,0 +1,154 @@
+# bot_part_2.py - Часть 2/7
+# Функции: check_website, check_ssl, check_mobile
+
+import requests
+import ssl
+import socket
+import time
+from urllib.parse import urlparse
+
+def check_website(url):
+    """
+    Проверяет доступность, скорость, размер, заголовки, кодировку.
+    """
+    # Автоматически добавляем https://, если не указано
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    try:
+        start_time = time.time()
+        response = requests.get(
+            url,
+            timeout=10,
+            headers={
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+            },
+            allow_redirects=True
+        )
+        load_time = round(time.time() - start_time, 2)
+        status_code = response.status_code
+        is_ok = status_code == 200
+
+        try:
+            size_kb = round(len(response.content) / 1024, 2)
+        except:
+            size_kb = "N/A"
+
+        content_type = response.headers.get("Content-Type", "").lower()
+        charset_ok = "utf-8" in content_type
+
+        return {
+            "url": url,
+            "is_ok": is_ok,
+            "status": "✅ Работает" if is_ok else f"❌ Ошибка {status_code}",
+            "status_code": status_code,
+            "load_time": f"{load_time} сек",
+            "size_kb": size_kb,
+            "headers": dict(response.headers),
+            "charset_ok": charset_ok,
+            "error": None
+        }
+
+    except requests.exceptions.Timeout:
+        return {
+            "url": url,
+            "is_ok": False,
+            "status": "🔴 Таймаут",
+            "error": "Превышено время ожидания",
+            "load_time": "N/A",
+            "size_kb": "N/A"
+        }
+
+    except requests.exceptions.ConnectionError:
+        return {
+            "url": url,
+            "is_ok": False,
+            "status": "🔴 Нет подключения",
+            "error": "Не удалось подключиться к серверу",
+            "load_time": "N/A",
+            "size_kb": "N/A"
+        }
+
+    except Exception as e:
+        return {
+            "url": url,
+            "is_ok": False,
+            "status": "🔴 Ошибка",
+            "error": str(e),
+            "load_time": "N/A",
+            "size_kb": "N/A"
+        }
+
+
+def check_ssl(url):
+    """
+    Проверяет валидность SSL-сертификата.
+    """
+    if not url.startswith("https://"):
+        return {"valid": False, "error": "HTTP"}
+
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.netloc.split(":")[0]
+
+        context = ssl.create_default_context()
+        with socket.create_connection((hostname, 443), timeout=10) as sock:
+            with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                cert = ssock.getpeercert()
+
+        # Проверка срока действия
+        from datetime import datetime
+        not_after = datetime.strptime(cert['notAfter'], '%b %d %H:%M:%S %Y %Z')
+        is_valid = not_after > datetime.now()
+
+        return {
+            "valid": is_valid,
+            "valid_to": not_after.strftime("%d.%m.%Y"),
+            "error": None
+        }
+
+    except Exception as e:
+        return {
+            "valid": False,
+            "error": str(e)
+        }
+
+
+def check_mobile(url):
+    """
+    Проверяет сайт с User-Agent мобильного устройства.
+    """
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    mobile_headers = {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15"
+    }
+
+    try:
+        start_time = time.time()
+        response = requests.get(url, headers=mobile_headers, timeout=10, allow_redirects=True)
+        load_time = round(time.time() - start_time, 2)
+
+        try:
+            size_kb = round(len(response.content) / 1024, 2)
+        except:
+            size_kb = "N/A"
+
+        return {
+            "url": url,
+            "load_time": f"{load_time} сек",
+            "size_kb": size_kb,
+            "is_ok": response.status_code == 200,
+            "status_code": response.status_code,
+            "error": None
+        }
+
+    except Exception as e:
+        return {
+            "url": url,
+            "load_time": "N/A",
+            "size_kb": "N/A",
+            "is_ok": False,
+            "error": str(e)
+        }
