@@ -20,17 +20,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # === Глобальные переменные (импортируются из bot_part_1) ===
-# competitor_urls, active_monitoring, monitoring_history, user_subscriptions
+# competitor_urls, active_monitoring, monitoring_history
 # Должны быть объявлены в bot_part_1.py
 
 # === Импорт функций из других частей ===
-# Убедитесь, что все файлы в одной папке
-from bot_part_1 import competitor_urls, active_monitoring, monitoring_history
-from bot_part_2 import check_website, check_ssl, check_mobile
-from bot_part_3 import check_meta, find_broken_links, check_robots_and_sitemap
-from bot_part_4 import start_monitoring_task, add_to_history, generate_status_chart
-from bot_part_5 import create_pdf_from_data
-from bot_part_6 import handle_message
+try:
+    from bot_part_1 import (
+        BOT_TOKEN,
+        ADMIN_CHAT_ID,
+        competitor_urls,
+        active_monitoring,
+        monitoring_history
+    )
+    from bot_part_2 import check_website, check_ssl, check_mobile
+    from bot_part_3 import check_meta, find_broken_links, check_robots_and_sitemap
+    from bot_part_4 import start_monitoring_task, add_to_history, generate_status_chart
+    from bot_part_5 import create_pdf_from_data
+    from bot_part_6 import handle_message, main_menu_keyboard
+except Exception as e:
+    logger.error(f"❌ Ошибка импорта: {e}")
+    raise
 
 # === Админ-команда: установка конкурента ===
 async def set_competitor(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -78,7 +87,7 @@ async def admin_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mobile = check_mobile(url)
     robots = check_robots_and_sitemap(url)
 
-    # === Сравнение с конкурентом (только для продвинутого) ===
+    # === Сравнение с конкурентом ===
     comp_url = competitor_urls.get("default")
     comparison = None
     if comp_url:
@@ -117,7 +126,7 @@ async def admin_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка генерации PDF-отчёта.")
 
 
-# === Функция сравнения с конкурентом (должна быть в bot_part_7 или отдельно) ===
+# === Функция сравнения с конкурентом ===
 def compare_with_competitor(your_url, competitor_url=None):
     """
     Сравнивает ваш сайт с конкурентом.
@@ -191,10 +200,13 @@ async def main():
         app = Application.builder().token(BOT_TOKEN).build()
 
         # === Обработчики команд ===
-        app.add_handler(CommandHandler("start", lambda u, c: u.message.reply_text(
-            "Добро пожаловать! Выберите действие из меню.",
-            reply_markup=ReplyKeyboardMarkup(main_menu_keyboard, resize_keyboard=True)
-        )))
+        async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            await update.message.reply_text(
+                "Добро пожаловать! Выберите действие из меню.",
+                reply_markup=ReplyKeyboardMarkup(main_menu_keyboard, resize_keyboard=True)
+            )
+
+        app.add_handler(CommandHandler("start", start))
         app.add_handler(CommandHandler("set_competitor", set_competitor))
         app.add_handler(CommandHandler("admin_check", admin_check))
 
@@ -211,4 +223,5 @@ async def main():
 
 # === Запуск (для Python 3.7+) ===
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
