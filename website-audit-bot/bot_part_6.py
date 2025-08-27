@@ -1,5 +1,5 @@
 # bot_part_6.py - Часть 6/7
-# Главное меню, обработка сообщений, оплата (только ЮMoney)
+# Главное меню, обработка сообщений, оплата
 
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, MessageHandler, filters
