@@ -78,6 +78,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         url = text
         check_type = context.user_data['check_type']
 
+        # Импорты (чтобы избежать циклических импортов)
+        from bot_part_2 import check_website, check_ssl
+        from bot_part_3 import check_meta, find_broken_links, check_robots_and_sitemap
+        from bot_part_5 import create_pdf_from_data
+        from bot_part_4 import add_to_history, generate_status_chart
+
         # === Бесплатная проверка ===
         if check_type == 'free_check':
             result = check_website(url)
