@@ -1,9 +1,16 @@
 # bot_part_6.py - Часть 6/7
 # Главное меню, обработка сообщений, оплата
 
+# === Импорты в начале файла (правильно!) ===
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, MessageHandler, filters
 from urllib.parse import urlparse
+
+# Импортируем функции из других частей
+from bot_part_2 import check_website, check_ssl
+from bot_part_3 import check_meta, find_broken_links, check_robots_and_sitemap
+from bot_part_4 import add_to_history, generate_status_chart
+from bot_part_5 import create_pdf_from_data
 
 # === Клавиатуры ===
 main_menu_keyboard = [
@@ -77,12 +84,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         url = text
         check_type = context.user_data['check_type']
-
-        # Импорты (чтобы избежать циклических импортов)
-        from bot_part_2 import check_website, check_ssl
-        from bot_part_3 import check_meta, find_broken_links, check_robots_and_sitemap
-        from bot_part_5 import create_pdf_from_data
-        from bot_part_4 import add_to_history, generate_status_chart
 
         # === Бесплатная проверка ===
         if check_type == 'free_check':
