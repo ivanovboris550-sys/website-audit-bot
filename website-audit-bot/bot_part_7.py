@@ -1,14 +1,11 @@
 # bot_part_7.py - Часть 7/7
-# Запуск бота, админ-команды
-
-import asyncio
-import logging
-import sys
-import os
-from datetime import datetime
+# Админ-команды, запуск бота (стабильный запуск)
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import asyncio
+import logging
+import sys
 
 # === Настройка логирования ===
 logging.basicConfig(
@@ -17,98 +14,85 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# === Глобальная переменная для доступа к app (если нужно) ===
-app = None
-
-# === Попытка импорта частей бота ===
+# === Глобальная переменная для токена (если не используется .env) ===
+# Убедитесь, что BOT_TOKEN и ADMIN_CHAT_ID загружены из bot_part_1
 try:
     from bot_part_1 import BOT_TOKEN, ADMIN_CHAT_ID, start
-    logger.info("✅ Часть 1/7: bot_part_1 загружена")
+    logger.info("✅ bot_part_1 загружен")
 except ImportError as e:
     logger.critical(f"❌ Ошибка импорта bot_part_1: {e}")
     sys.exit(1)
 
 try:
     from bot_part_6 import handle_message
-    logger.info("✅ Часть 6/7: bot_part_6 загружена")
+    logger.info("✅ bot_part_6 загружен")
 except ImportError as e:
     logger.critical(f"❌ Ошибка импорта bot_part_6: {e}")
     sys.exit(1)
 
 
-# === Обработчик ошибок ===
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Логирует исключения, возникающие при обработке обновлений."""
-    if isinstance(update, Update):
-        user = update.effective_user
-        chat_id = update.effective_chat.id
-        message = f"❗️ Ошибка у пользователя @{user.username} ({chat_id}): {context.error}"
-    else:
-        message = f"❗️ Фатальная ошибка: {context.error}"
-
-    logger.error(message, exc_info=context.error)
-
-
-# === Команда /admin (доступна только администратору) ===
-async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# === Команда /admin_check — проверка работоспособности ===
+async def admin_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для администратора — тестовая команда."""
     if update.effective_user.id != ADMIN_CHAT_ID:
-        await update.message.reply_text("🚫 У вас нет доступа к этой команде.")
+        await update.message.reply_text("🚫 Доступ запрещён.")
         return
+    await update.message.reply_text("🟢 Бот работает, сервер жив.")
 
-    stats_file = "bot_stats.csv"
-    if os.path.exists(stats_file):
+
+# === Обработчик ошибок ===
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    """Логирует все ошибки, возникающие в работе бота."""
+    logger.error(f"🔴 Произошла ошибка: {context.error}", exc_info=True)
+
+    # Опционально: отправить сообщение администратору
+    if isinstance(update, Update) and update.effective_chat:
         try:
-            with open(stats_file, 'rb') as f:
-                await context.bot.send_document(
-                    chat_id=update.effective_chat.id,
-                    document=f,
-                    filename="статистика_бота.csv",
-                    caption="📊 Статистика использования бота"
-                )
-        except Exception as e:
-            await update.message.reply_text(f"❌ Не удалось отправить файл: {e}")
-    else:
-        await update.message.reply_text("📂 Файл статистики не найден.")
+            await context.bot.send_message(
+                chat_id=ADMIN_CHAT_ID,
+                text=f"⚠️ Ошибка у пользователя {update.effective_user.name}: `{context.error}`",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
 
 
 # === Главная функция запуска бота ===
 async def main():
     """Создаёт Application и запускает polling."""
-    global app
-
     try:
-        # Для Windows
+        # Для Windows (если нужно)
         if sys.platform == 'win32':
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
         # Создание Application
-        application = Application.builder().token(BOT_TOKEN).build()
+        app = Application.builder().token(BOT_TOKEN).build()
 
         # Добавление обработчиков
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-        application.add_handler(CommandHandler("admin", admin_command))
-        application.add_error_handler(error_handler)
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        app.add_handler(CommandHandler("admin_check", admin_check))
+        app.add_error_handler(error_handler)
 
         logger.info("🚀 Бот запущен. Ожидание команд...")
 
         # Запуск polling
-        await application.run_polling(
+        await app.run_polling(
             drop_pending_updates=True,
             timeout=30
         )
 
     except Exception as e:
-        logger.critical(f"🔴 Фатальная ошибка при запуске бота: {e}")
+        logger.critical(f"💥 Критическая ошибка при запуске: {e}")
         raise
 
 
-# === Точка входа для выполнения скрипта ===
+# === Точка входа ===
 if __name__ == "__main__":
     try:
-        # Запуск основной асинхронной функции
+        # Запускаем main через asyncio.run() — стандартный способ
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("🛑 Бот остановлен вручную (Ctrl+C)")
     except Exception as e:
-        logger.critical(f"💥 Критическая ошибка: {e}")
+        logger.critical(f"💀 Фатальная ошибка: {e}")
