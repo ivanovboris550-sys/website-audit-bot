@@ -1,4 +1,4 @@
-# bot_part_7.py - Часть 7/7 (ФИНАЛЬНЫЙ РАБОЧИЙ ВАРИАНТ)
+# bot_part_7.py - Часть 7/7 (ФИНАЛЬНЫЙ ИСПРАВЛЕННЫЙ ВАРИАНТ)
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
