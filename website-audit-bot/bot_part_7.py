@@ -1,5 +1,5 @@
 # bot_part_7.py - Часть 7/7
-# Админ-команды, запуск бота (стабильный запуск)
+# Админ-команды, обработчик ошибок, запуск бота
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -14,24 +14,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# === Глобальная переменная для токена (если не используется .env) ===
-# Убедитесь, что BOT_TOKEN и ADMIN_CHAT_ID загружены из bot_part_1
+# === Импорт необходимых функций из других частей ===
 try:
-    from bot_part_1 import BOT_TOKEN, ADMIN_CHAT_ID, start
-    logger.info("✅ bot_part_1 загружен")
+    from bot_part_1 import BOT_TOKEN, ADMIN_CHAT_ID, log_action
+    logger.info("✅ bot_part_1 загружена")
 except ImportError as e:
     logger.critical(f"❌ Ошибка импорта bot_part_1: {e}")
     sys.exit(1)
 
 try:
-    from bot_part_6 import handle_message
-    logger.info("✅ bot_part_6 загружен")
+    from bot_part_6 import handle_message, main_menu_markup
+    logger.info("✅ bot_part_6 загружена")
 except ImportError as e:
     logger.critical(f"❌ Ошибка импорта bot_part_6: {e}")
     sys.exit(1)
 
 
-# === Команда /admin_check — проверка работоспособности ===
+# === Команда /admin_check — проверка работоспособности (только для админа) ===
 async def admin_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда для администратора — тестовая команда."""
     if update.effective_user.id != ADMIN_CHAT_ID:
@@ -50,11 +49,11 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=ADMIN_CHAT_ID,
-                text=f"⚠️ Ошибка у пользователя {update.effective_user.name}: `{context.error}`",
+                text=f"⚠️ Ошибка у пользователя `{update.effective_user.name}`:\n```\n{context.error}\n```",
                 parse_mode="Markdown"
             )
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"❌ Не удалось отправить уведомление админу: {e}")
 
 
 # === Главная функция запуска бота ===
@@ -66,18 +65,18 @@ async def main():
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
         # Создание Application
-        app = Application.builder().token(BOT_TOKEN).build()
+        application = Application.builder().token(BOT_TOKEN).build()
 
         # Добавление обработчиков
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-        app.add_handler(CommandHandler("admin_check", admin_check))
-        app.add_error_handler(error_handler)
+        application.add_handler(CommandHandler("start", lambda u, c: handle_message(u, c)))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        application.add_handler(CommandHandler("admin_check", admin_check))
+        application.add_error_handler(error_handler)
 
         logger.info("🚀 Бот запущен. Ожидание команд...")
 
         # Запуск polling
-        await app.run_polling(
+        await application.run_polling(
             drop_pending_updates=True,
             timeout=30
         )
