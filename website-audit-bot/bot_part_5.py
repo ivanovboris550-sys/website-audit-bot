@@ -1,344 +1,186 @@
 # bot_part_5.py - Часть 5/7
 # Генерация PDF-отчётов с помощью fpdf2
 
-from fpdf import FPDF
+from fpdf2 import FPDF
 import os
+from datetime import datetime
 import base64
-import datetime
+from io import BytesIO
 
-# Пути к шрифтам (если есть) или используем Helvetica
-ARIAL_REGULAR = "fonts/arial.ttf"
-ARIAL_BOLD = "fonts/arialbd.ttf"
+# === Класс для создания PDF ===
+class AuditPDF(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 12)
+        self.cell(0, 10, 'Анализ сайта — Отчёт', ln=True, align='C')
+        self.ln(5)
 
-def create_pdf_from_data(chat_id, data, report_type="basic"):
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 10, f'Страница {self.page_no()}', align='C')
+
+    def add_title(self, text):
+        self.set_font('Arial', 'B', 14)
+        self.set_text_color(0, 0, 0)
+        self.cell(0, 10, text, ln=True)
+        self.ln(5)
+
+    def add_subtitle(self, text):
+        self.set_font('Arial', 'B', 12)
+        self.set_text_color(0, 51, 102)
+        self.cell(0, 8, text, ln=True)
+        self.ln(3)
+
+    def add_paragraph(self, text):
+        self.set_font('Arial', '', 10)
+        self.set_text_color(0, 0, 0)
+        self.multi_cell(0, 6, text)
+        self.ln(4)
+
+    def add_code_block(self, text):
+        self.set_font('Courier', '', 9)
+        self.set_text_color(128, 0, 0)
+        self.multi_cell(0, 5, text)
+        self.ln(4)
+
+    def add_result_row(self, label, value, status=""):
+        self.set_font('Arial', '', 10)
+        self.cell(70, 6, label, border=1)
+        self.cell(80, 6, str(value), border=1)
+        if status == "✅":
+            self.set_text_color(0, 128, 0)
+        elif status == "❌":
+            self.set_text_color(255, 0, 0)
+        else:
+            self.set_text_color(0, 0, 0)
+        self.cell(30, 6, status, border=1, ln=True)
+        self.set_text_color(0, 0, 0)
+
+    def add_image_from_base64(self, img_data, title=""):
+        if not img_data:
+            return
+        try:
+            # Декодируем base64
+            img_bytes = base64.b64decode(img_data.split(",")[1])
+            img_buffer = BytesIO(img_bytes)
+            
+            # Сохраняем временный файл
+            temp_path = "/tmp/chart_temp.png"
+            with open(temp_path, "wb") as f:
+                f.write(img_buffer.read())
+            img_buffer.seek(0)
+
+            # Добавляем изображение в PDF
+            self.image(temp_path, x=10, w=180)
+            os.remove(temp_path)  # Удаляем временный файл
+            self.ln(5)
+        except Exception as e:
+            self.add_paragraph(f"⚠ Ошибка добавления графика: {str(e)}")
+            self.ln(5)
+
+
+# === Генерация PDF по результатам аудита ===
+def generate_pdf_report(chat_id: int, url: str, result: dict, meta: dict, ssl_result: dict, mobile: dict, broken_links: dict, comparison: dict, expert_comment: str, uptime_chart: str = None, load_time_chart: str = None):
     """
-    Генерирует PDF-отчёт на основе данных.
-    report_type: "basic", "advanced"
+    Создаёт PDF-отчёт на основе всех данных.
+    Возвращает путь к файлу.
     """
-    pdf = FPDF()
+    pdf = AuditPDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
 
-    # === Подключение Arial (если файлы есть) ===
-    use_arial = False
-    if os.path.exists(ARIAL_REGULAR) and os.path.exists(ARIAL_BOLD):
-        try:
-            pdf.add_font("Arial", "", ARIAL_REGULAR)
-            pdf.add_font("Arial", "B", ARIAL_BOLD)
-            pdf.set_font("Arial", size=12)
-            use_arial = True
-        except Exception as e:
-            print(f"⚠ Ошибка загрузки Arial: {e}")
-            pdf.set_font("Helvetica", size=12)
-    else:
-        pdf.set_font("Helvetica", size=12)
-
-    # === Заголовок ===
-    pdf.set_font("Arial", "B", 16) if use_arial else pdf.set_font("Helvetica", "B", 16)
-    pdf.set_text_color(0, 0, 0)
-    pdf.cell(0, 10, "Отчёт по сайту", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT, align='C')
-    pdf.ln(5)
-
-    # Подзаголовок
-    pdf.set_font("Arial", size=12) if use_arial else pdf.set_font("Helvetica", size=12)
-    pdf.set_text_color(60, 60, 60)
-    pdf.cell(0, 8, f"Сайт: {data['url']}", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-    pdf.cell(0, 8, f"Дата: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
+    # Заголовок
+    pdf.add_title("🔍 Полный аудит сайта")
+    pdf.add_paragraph(f"Сайт: {url}")
+    pdf.add_paragraph(f"Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
     pdf.ln(10)
 
-    # === Основные метрики ===
-    result = data.get("result", {})
-    pdf.set_font("Arial", "B", 14) if use_arial else pdf.set_font("Helvetica", "B", 14)
-    pdf.set_text_color(0, 0, 0)
-    pdf.cell(0, 10, "📊 Основные метрики", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-    pdf.set_font("Arial", size=12) if use_arial else pdf.set_font("Helvetica", size=12)
-    pdf.set_text_color(60, 60, 60)
-    pdf.cell(0, 8, f"Доступность: {result.get('status', 'N/A')}", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
+    # 1. Общая доступность
+    pdf.add_subtitle("🌐 Доступность и производительность")
+    pdf.add_result_row("URL", result.get("url", ""), "✅" if result.get("is_ok") else "❌")
+    pdf.add_result_row("Статус", result.get("status", "N/A"), "✅" if result.get("is_ok") else "❌")
+    pdf.add_result_row("Время загрузки", result.get("load_time", "N/A"))
+    pdf.add_result_row("Размер страницы", f"{result.get('size_kb', 'N/A')} KB")
 
-    # Скорость
-    load_time_str = result.get('load_time', 'N/A')
-    try:
-        load_time = float(load_time_str.split()[0])
-        if load_time < 1.5:
-            perf = "✅ Отлично"
-        elif load_time < 3.0:
-            perf = "🟡 Средне"
-        else:
-            perf = "🔴 Плохо"
-    except:
-        load_time = 5.0
-        perf = "N/A"
-    pdf.cell(0, 8, f"Скорость: {load_time_str}", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-    pdf.cell(0, 8, f"Оценка скорости: {perf}", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-
-    # SSL
-    ssl_valid = result.get('ssl', {}).get('valid', False)
-    if ssl_valid:
-        pdf.set_text_color(0, 128, 0)
-        pdf.cell(0, 8, "SSL: ✅ Действителен", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
+    # 2. SSL
+    pdf.add_subtitle("🔒 SSL-сертификат")
+    if ssl_result.get("error"):
+        pdf.add_paragraph(f"Ошибка: {ssl_result['error']}")
     else:
-        pdf.set_text_color(200, 0, 0)
-        pdf.cell(0, 8, "SSL: ❌ Недействителен", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-    pdf.set_text_color(60, 60, 60)
+        pdf.add_result_row("Действителен", "✅" if ssl_result.get("valid") else "❌")
+        pdf.add_result_row("Выдан", ssl_result.get("issued_to", "N/A"))
+        pdf.add_result_row("Кем выдан", ssl_result.get("issued_by", "N/A"))
+        pdf.add_result_row("Истекает", ssl_result.get("expires", "N/A"))
 
-    if result.get('size_kb'):
-        pdf.cell(0, 8, f"Размер: {result['size_kb']} KB", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-    pdf.ln(8)
+    # 3. Мобильная версия
+    pdf.add_subtitle("📱 Мобильная версия")
+    pdf.add_result_row("Загружается", "✅" if mobile.get("is_ok") else "❌")
+    pdf.add_result_row("Время загрузки", mobile.get("load_time", "N/A"))
+    pdf.add_result_row("Размер", f"{mobile.get('size_kb', 'N/A')} KB")
 
-    # === SEO-анализ ===
-    meta = data.get("meta", {})
-    if meta and "error" not in meta:
-        pdf.set_font("Arial", "B", 14) if use_arial else pdf.set_font("Helvetica", "B", 14)
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(0, 10, "📌 SEO-анализ", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        pdf.set_font("Arial", size=12) if use_arial else pdf.set_font("Helvetica", size=12)
-        pdf.set_text_color(60, 60, 60)
+    # 4. SEO
+    pdf.add_subtitle("🔎 SEO и метатеги")
+    pdf.add_result_row("Title", meta.get("title", "N/A"))
+    pdf.add_result_row("Meta Description", meta.get("meta_description", "N/A"))
+    pdf.add_result_row("Количество H1", len(meta.get("h1", [])))
+    for i, h1 in enumerate(meta.get("h1", [])[:3]):
+        pdf.add_paragraph(f"H1 {i+1}: {h1}")
 
-        # H1
-        pdf.cell(0, 8, f"H1: {meta.get('h1', 'N/A')}", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
+    pdf.add_result_row("OG Title", "✅" if meta["og_tags"].get("og:title") else "❌")
+    pdf.add_result_row("OG Description", "✅" if meta["og_tags"].get("og:description") else "❌")
+    pdf.add_result_row("OG Image", "✅" if meta["og_tags"].get("og:image") else "❌")
 
-        # Title
-        pdf.cell(0, 8, f"Title: {meta.get('title', 'N/A')}", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
+    # 5. robots.txt и sitemap.xml
+    pdf.add_subtitle("📄 robots.txt и sitemap.xml")
+    pdf.add_result_row("robots.txt", "✅" if result.get("robots_exists") else "❌")
+    pdf.add_result_row("sitemap.xml", "✅" if result.get("sitemap_exists") else "❌")
 
-        # Meta Description
-        desc = meta.get('meta_description') or 'N/A'
-        if desc == 'N/A':
-            pdf.set_text_color(200, 0, 0)
-            pdf.cell(0, 8, "Meta Description: ❌ Отсутствует", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        else:
-            desc_len = len(desc)
-            if desc_len < 90:
-                pdf.set_text_color(200, 100, 0)
-                pdf.cell(0, 8, f"Meta Description: ⚠ Слишком короткий ({desc_len} симв.)", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-            elif desc_len > 160:
-                pdf.set_text_color(200, 100, 0)
-                pdf.cell(0, 8, f"Meta Description: ⚠ Слишком длинный ({desc_len} симв.)", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-            else:
-                pdf.set_text_color(0, 128, 0)
-                pdf.cell(0, 8, f"Meta Description: ✅ Отлично ({desc_len} симв.)", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        pdf.set_text_color(60, 60, 60)
-
-        # Viewport
-        if meta.get('viewport'):
-            pdf.set_text_color(0, 128, 0)
-            pdf.cell(0, 8, "Viewport: ✅ Есть", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        else:
-            pdf.set_text_color(200, 0, 0)
-            pdf.cell(0, 8, "Viewport: ❌ Отсутствует", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        pdf.set_text_color(60, 60, 60)
-
-        # Canonical
-        if meta.get('canonical'):
-            pdf.set_text_color(0, 128, 0)
-            pdf.cell(0, 8, "Canonical: ✅ Есть", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        else:
-            pdf.set_text_color(200, 0, 0)
-            pdf.cell(0, 8, "Canonical: ❌ Отсутствует", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        pdf.set_text_color(60, 60, 60)
-
-        # Язык (lang)
-        lang = meta.get('lang', 'N/A')
-        pdf.cell(0, 8, f"Язык (lang): {lang}", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-
-        # Кодировка (из headers)
-        charset_ok = result.get("charset_ok", False)
-        if charset_ok:
-            pdf.set_text_color(0, 128, 0)
-            pdf.cell(0, 8, "Кодировка: ✅ UTF-8", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        else:
-            pdf.set_text_color(200, 0, 0)
-            pdf.cell(0, 8, "Кодировка: ❌ Не UTF-8", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        pdf.set_text_color(60, 60, 60)
-
-        pdf.ln(8)
-
-    # === robots.txt и sitemap.xml ===
-    robots = data.get("robots", {})
-    if robots:
-        pdf.set_font("Arial", "B", 14) if use_arial else pdf.set_font("Helvetica", "B", 14)
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(0, 10, "📄 robots.txt и sitemap.xml", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        pdf.set_font("Arial", size=12) if use_arial else pdf.set_font("Helvetica", size=12)
-        pdf.set_text_color(60, 60, 60)
-
-        # robots.txt
-        robots_status = robots.get('robots_txt', 'N/A')
-        if "Доступен" in robots_status:
-            pdf.set_text_color(0, 128, 0)
-            pdf.cell(0, 8, "robots.txt: ✅ Доступен", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        elif "Запрещает" in robots_status:
-            pdf.set_text_color(200, 100, 0)
-            pdf.cell(0, 8, "robots.txt: ⚠ Запрещает индексацию", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        else:
-            pdf.set_text_color(200, 0, 0)
-            pdf.cell(0, 8, f"robots.txt: ❌ {robots_status}", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-
-        # sitemap.xml
-        sitemap_status = robots.get('sitemap_xml', 'N/A')
-        if "Доступен" in sitemap_status:
-            pdf.set_text_color(0, 128, 0)
-            pdf.cell(0, 8, "sitemap.xml: ✅ Доступен", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        else:
-            pdf.set_text_color(200, 0, 0)
-            pdf.cell(0, 8, f"sitemap.xml: ❌ {sitemap_status}", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-
-        pdf.set_text_color(60, 60, 60)
-        pdf.ln(8)
-
-    # === Битые ссылки ===
-    broken_links = data.get("broken_links", [])
-    if broken_links:
-        pdf.set_font("Arial", "B", 14) if use_arial else pdf.set_font("Helvetica", "B", 14)
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(0, 10, "🔗 Битые ссылки (404)", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        pdf.set_font("Arial", size=12) if use_arial else pdf.set_font("Helvetica", size=12)
-        pdf.set_text_color(200, 0, 0)
-        for link in broken_links[:10]:
-            pdf.cell(0, 8, f"❌ {link['url']} (код: {link['status']})", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        if len(broken_links) > 10:
-            pdf.cell(0, 8, f"... и ещё {len(broken_links) - 10}", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        pdf.ln(8)
+    # 6. Битые ссылки
+    pdf.add_subtitle("🔗 Битые ссылки")
+    if broken_links.get("error"):
+        pdf.add_paragraph(f"Ошибка при проверке: {broken_links['error']}")
     else:
-        pdf.set_font("Arial", "B", 14) if use_arial else pdf.set_font("Helvetica", "B", 14)
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(0, 10, "✅ Битые ссылки", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        pdf.set_font("Arial", size=12) if use_arial else pdf.set_font("Helvetica", size=12)
-        pdf.set_text_color(0, 128, 0)
-        pdf.cell(0, 8, "Не найдены", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        pdf.ln(8)
+        pdf.add_paragraph(f"Найдено битых ссылок: {broken_links.get('broken', 0)} из {broken_links.get('total', 0)}")
+        for link in broken_links.get("links", [])[:10]:  # Только первые 10
+            if "404" in link["status"]:
+                pdf.add_code_block(f"{link['url']} → {link['status']}")
 
-    # === График активности ===
-    if data.get("chart_img"):
-        pdf.set_font("Arial", "B", 14) if use_arial else pdf.set_font("Helvetica", "B", 14)
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(0, 10, "📈 График активности", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        img_data = base64.b64decode(data["chart_img"])
-        temp_img_path = f"temp_chart_{chat_id}.png"
-        with open(temp_img_path, "wb") as f:
-            f.write(img_data)
-        pdf.image(temp_img_path, x=10, w=180)
-        os.remove(temp_img_path)
-        pdf.ln(10)
+    # 7. Сравнение с конкурентом
+    pdf.add_subtitle("🆚 Сравнение с конкурентом")
+    pdf.add_paragraph(
+        f"<strong>Ваш сайт:</strong><br>"
+        f"• Время загрузки: {comparison['load_time']['your']}<br>"
+        f"• Размер: {comparison['size_kb']['your']} KB<br>"
+        f"<strong>Конкурент:</strong><br>"
+        f"• Время загрузки: {comparison['load_time']['comp']}<br>"
+        f"• Размер: {comparison['size_kb']['comp']} KB"
+    )
 
-    # === Сравнение с конкурентом ===
-    comparison = data.get("comparison", {})
-    if comparison and isinstance(comparison, dict):
-        pdf.set_font("Arial", "B", 14) if use_arial else pdf.set_font("Helvetica", "B", 14)
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(0, 10, "🆚 СРАВНЕНИЕ С КОНКУРЕНТОМ", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        pdf.ln(2)
+    # 8. Комментарий эксперта
+    pdf.add_subtitle("👨‍💻 Комментарий от Бориса")
+    pdf.set_font('Arial', '', 11)
+    pdf.multi_cell(0, 6, expert_comment.replace("<strong>", "").replace("</strong>", ""))
+    pdf.ln(5)
 
-        col_width = 60
-        pdf.set_font("Arial", "B", 12) if use_arial else pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(col_width, 8, "Параметр", border=1, align='C')
-        pdf.cell(col_width, 8, "Ваш сайт", border=1, align='C')
-        pdf.cell(col_width, 8, "Конкурент", border=1, align='C')
-        pdf.ln(8)
+    # 9. Графики
+    if uptime_chart:
+        pdf.add_subtitle("📈 История доступности")
+        pdf.add_image_from_base64(uptime_chart)
 
-        pdf.set_font("Arial", size=12) if use_arial else pdf.set_font("Helvetica", size=12)
+    if load_time_chart:
+        pdf.add_subtitle("⏱ История времени загрузки")
+        pdf.add_image_from_base64(load_time_chart)
 
-        # Title
-        pdf.cell(col_width, 8, "Title", border=1)
-        pdf.cell(col_width, 8, str(comparison['title']['your'])[:50], border=1)
-        pdf.cell(col_width, 8, str(comparison['title']['comp'])[:50], border=1)
-        pdf.ln(8)
+    # Финальное сообщение
+    pdf.add_subtitle("📌 Рекомендации")
+    pdf.add_paragraph("• Убедитесь, что все битые ссылки исправлены.")
+    pdf.add_paragraph("• Ускорьте загрузку сайта с помощью сжатия и кэширования.")
+    pdf.add_paragraph("• Проверьте корректность редиректов и canonical.")
 
-        # Длина Title
-        pdf.cell(col_width, 8, "Длина Title", border=1)
-        pdf.cell(col_width, 8, str(comparison['title']['your_len']), border=1)
-        pdf.cell(col_width, 8, str(comparison['title']['comp_len']), border=1)
-        pdf.ln(8)
+    # Сохраняем PDF
+    filename = f"reports/audit_{chat_id}_{int(datetime.now().timestamp())}.pdf"
+    pdf.output(filename)
+    return filename
 
-        # H1
-        pdf.cell(col_width, 8, "H1", border=1)
-        pdf.cell(col_width, 8, str(comparison['h1']['your'])[:50], border=1)
-        pdf.cell(col_width, 8, str(comparison['h1']['comp'])[:50], border=1)
-        pdf.ln(8)
 
-        # Viewport
-        pdf.cell(col_width, 8, "Viewport", border=1)
-        pdf.cell(col_width, 8, comparison['viewport']['your'], border=1)
-        pdf.cell(col_width, 8, comparison['viewport']['comp'], border=1)
-        pdf.ln(8)
-
-        # Canonical
-        pdf.cell(col_width, 8, "Canonical", border=1)
-        pdf.cell(col_width, 8, comparison['canonical']['your'], border=1)
-        pdf.cell(col_width, 8, comparison['canonical']['comp'], border=1)
-        pdf.ln(8)
-
-        # Скорость
-        pdf.cell(col_width, 8, "Скорость", border=1)
-        pdf.cell(col_width, 8, str(comparison['load_time']['your']), border=1)
-        pdf.cell(col_width, 8, str(comparison['load_time']['comp']), border=1)
-        pdf.ln(8)
-
-        # Размер
-        pdf.cell(col_width, 8, "Размер", border=1)
-        pdf.cell(col_width, 8, str(comparison['size_kb']['your']), border=1)
-        pdf.cell(col_width, 8, str(comparison['size_kb']['comp']), border=1)
-        pdf.ln(8)
-
-        pdf.ln(5)
-    else:
-        pdf.set_font("Arial", "B", 14) if use_arial else pdf.set_font("Helvetica", "B", 14)
-        pdf.set_text_color(200, 100, 0)
-        pdf.cell(0, 10, "⚠ Нет данных для сравнения", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        pdf.set_text_color(60, 60, 60)
-        pdf.cell(0, 8, "Возможно, конкурент не установлен или сайт не отвечает.", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        pdf.ln(8)
-
-    # === Комментарий эксперта (только для продвинутого) ===
-    if report_type == "advanced":
-        pdf.set_font("Arial", "B", 14) if use_arial else pdf.set_font("Helvetica", "B", 14)
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(0, 10, "👨‍💻 Комментарий эксперта", new_x=pdf.XPos.LMARGIN, new_y=pdf.YPos.NEXT)
-        pdf.set_font("Arial", size=12) if use_arial else pdf.set_font("Helvetica", size=12)
-        pdf.set_text_color(60, 60, 60)
-
-        expert_comment = f"Привет! Меня зовут Борис 👋, я как раз смотрел сайт {data['url']} — и вот что я по этому поводу думаю:\n\n"
-
-        if load_time < 1.5:
-            expert_comment += f"✅ Отличная работа! Сайт загружается за {load_time} сек — это отлично!\n"
-        elif load_time < 3.0:
-            expert_comment += f"📊 Средняя скорость — {load_time} сек. Есть куда расти.\n"
-        else:
-            expert_comment += f"📉 Сайт грузится медленно — {load_time} сек. Это критично.\n"
-
-        if not meta.get('viewport'):
-            expert_comment += "❌ Не задан viewport — сайт может плохо отображаться на мобильных.\n"
-        if not meta.get('canonical'):
-            expert_comment += "❌ Нет canonical — возможны проблемы с дублями.\n"
-        if not meta.get('meta_description') or len(meta.get('meta_description', '')) < 90:
-            expert_comment += "⚠ Meta description слишком короткий — добавьте, чтобы улучшить CTR в поиске.\n"
-
-        ssl_info = data['result'].get("ssl", {})
-        if not ssl_info.get("valid", False) and data["url"].startswith("https://"):
-            expert_comment += "🔐 SSL-сертификат недействителен — это снижает доверие.\n"
-        elif data["url"].startswith("http://"):
-            expert_comment += "🔒 Сайт не использует HTTPS — это уязвимо.\n"
-        else:
-            expert_comment += "✅ SSL-сертификат действителен — это важно.\n"
-
-        expert_comment += (
-            "\nЕсли хотите, могу помочь с исправлением этих проблем. "
-            "Пишите мне: @ivanovboris550 — сделаю всё за вас."
-        )
-
-        pdf.multi_cell(0, 6, expert_comment)
-        pdf.ln(5)
-
-    # === Подвал ===
-    pdf.set_font("Arial", size=10) if use_arial else pdf.set_font("Helvetica", size=10)
-    pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 8, "Создано с помощью бота для анализа сайтов • Website Audit Bot", align='C')
-
-    # === Сохранение PDF ===
-    pdf_path = f"reports/report_{chat_id}_{int(datetime.datetime.now().timestamp())}.pdf"
-    os.makedirs("reports", exist_ok=True)
-    try:
-        pdf.output(pdf_path)
-        return pdf_path
-    except Exception as e:
-        print(f"❌ Ошибка генерации PDF: {e}")
-        return None
+logger.info("✅ Часть 5/7: Генерация PDF-отчётов готова")
