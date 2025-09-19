@@ -160,6 +160,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🔴 Неизвестная команда. Выберите действие из меню.",
             reply_markup=main_menu_markup
         )
-
-
+import logging
+logger = logging.getLogger(__name__)
 logger.info("✅ Часть 6/7: Обработчик сообщений и меню загружены")
+
