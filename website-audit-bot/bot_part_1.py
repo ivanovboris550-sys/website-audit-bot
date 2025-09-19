@@ -1,22 +1,33 @@
 # bot_part_1.py - Часть 1/7
-# Настройки, .env, логирование, глобальные переменные
+# Импорты, .env, настройки, логирование
 
 import os
-from dotenv import load_dotenv
+import asyncio
+import datetime
+import time
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse, urljoin
 import logging
+import csv
+import sys
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# === Загрузка переменных окружения ===
+# === Фикс для Windows (если нужно) ===
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+# === Загрузка переменных окружения из .env ===
+from dotenv import load_dotenv
 load_dotenv()
 
-# === Проверка обязательных переменных ===
+# === Настройки бота ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise ValueError("❌ Не задан BOT_TOKEN в .env файле")
+ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID"))
 
-try:
-    ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID"))
-except (TypeError, ValueError):
-    raise ValueError("❌ Не задан или некорректен ADMIN_CHAT_ID в .env файле")
+if not BOT_TOKEN:
+    raise ValueError("❌ Переменная окружения BOT_TOKEN не найдена. Проверьте файл .env")
 
 # === Настройка логирования ===
 logging.basicConfig(
@@ -25,41 +36,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# === Создание необходимых папок ===
+os.makedirs("reports", exist_ok=True)
+os.makedirs("monitored_sites", exist_ok=True)
+
+# === Функция для записи статистики ===
+def log_action(chat_id: int, username: str, action: str, details: str = ""):
+    """Записывает действия пользователя в CSV-файл."""
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    file_exists = os.path.exists("bot_stats.csv")
+    with open("bot_stats.csv", "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(["Timestamp", "Chat ID", "Username", "Action", "Details"])
+        writer.writerow([timestamp, chat_id, username, action, details])
+
 # === Глобальные переменные ===
-# Хранение конкурента для сравнения
-competitor_urls = {"default": None}  # Устанавливается через /set_competitor
+total_checks = 0
+total_audits = 0
 
-# Активные задачи мониторинга
-active_monitoring = {}
-
-# Последний статус сайта (для уведомлений)
-last_status = {}
-
-# История проверок (для графиков)
-monitoring_history = {}
-
-# Подписки пользователей
-user_subscriptions = {}
-
-# === Папки ===
-REPORTS_DIR = "reports"
-FONTS_DIR = "fonts"
-
-# Создаём папки при старте
-os.makedirs(REPORTS_DIR, exist_ok=True)
-os.makedirs(FONTS_DIR, exist_ok=True)
-
-# === Константы ===
-MONITORING_INTERVALS = {
-    "5_min": 300,
-    "10_min": 600,
-    "30_min": 1800
-}
-
-# === Логирование старта ===
 logger.info("✅ Часть 1/7: Настройки загружены, папки созданы")
-
-
-
-
-
