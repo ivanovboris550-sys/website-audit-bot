@@ -1,5 +1,4 @@
-# bot_part_7.py - Часть 7/7
-# Запуск бота (исправленный, стабильный вариант для python-telegram-bot==22.4)
+# bot_part_7.py - Часть 7/7 (ФИНАЛЬНЫЙ РАБОЧИЙ ВАРИАНТ)
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -30,37 +29,22 @@ except ImportError as e:
     sys.exit(1)
 
 
-# === Команда /admin_check — проверка работоспособности (для админа) ===
+# === Команда /admin_check (для админа) ===
 async def admin_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Простая команда для проверки, жив ли бот."""
-    if update.effective_user.id != ADMIN_CHAT_ID:
-        await update.message.reply_text("🚫 Доступ запрещён.")
-        return
-    await update.message.reply_text("🟢 Бот работает, сервер жив.")
+    if update.effective_user.id == ADMIN_CHAT_ID:
+        await update.message.reply_text("🟢 Бот работает!")
 
 
 # === Обработчик ошибок ===
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    """Логирует все ошибки, возникающие в работе бота."""
-    logger.error(f"🔴 Произошла ошибка: {context.error}", exc_info=True)
-
-    # Попытка отправить уведомление администратору
-    try:
-        if isinstance(update, Update) and update.effective_chat:
-            await context.bot.send_message(
-                chat_id=ADMIN_CHAT_ID,
-                text=f"⚠️ Ошибка у пользователя `{update.effective_user.name}`:\n```\n{context.error}\n```",
-                parse_mode="Markdown"
-            )
-    except Exception as e:
-        logger.error(f"❌ Не удалось отправить уведомление админу: {e}")
+    logger.error(f"🔴 Ошибка: {context.error}", exc_info=True)
 
 
-# === Главная функция запуска бота ===
+# === Главная функция запуска ===
 async def main():
     """Создаёт Application и запускает polling."""
     try:
-        # Для Windows (если нужно)
+        # Для Windows
         if sys.platform == 'win32':
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
@@ -82,22 +66,16 @@ async def main():
         )
 
     except Exception as e:
-        logger.critical(f"💥 Критическая ошибка при запуске: {e}")
+        logger.critical(f"💥 Критическая ошибка: {e}")
         raise
 
 
 # === Точка входа ===
 if __name__ == "__main__":
     try:
-        # Единственный правильный способ запуска для v20+
+        # ЕДИНСТВЕННЫЙ правильный способ для v20+
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("🛑 Бот остановлен вручную (Ctrl+C)")
-    except RuntimeError as e:
-        if "Event loop is closed" in str(e):
-            # Python иногда выдаёт эту ошибку при завершении — можно игнорировать
-            pass
-        else:
-            logger.critical(f"💀 Runtime ошибка: {e}")
+        logger.info("🛑 Бот остановлен вручную.")
     except Exception as e:
         logger.critical(f"💀 Фатальная ошибка: {e}")
